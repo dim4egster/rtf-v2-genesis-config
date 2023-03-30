@@ -36,7 +36,7 @@ import (
 )
 
 type artifactData struct {
-	Bytecode         1string `json:"bytecode"`
+	Bytecode         string `json:"bytecode"`
 	DeployedBytecode string `json:"deployedBytecode"`
 }
 
