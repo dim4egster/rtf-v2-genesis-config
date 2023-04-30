@@ -133,11 +133,11 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
         require(dc.state != ContractState.Disabled, "Deployer: contract is not enabled");
     }
 
-    function disableContract(address impl) public onlyFromGovernance virtual override {
+    function disableContract(address impl) public onlyFromDeployer virtual override {
         _disableContract(impl);
     }
 
-    function enableContract(address impl) public onlyFromGovernance virtual override {
+    function enableContract(address impl) public onlyFromDeployer virtual override {
         _enableContract(impl);
     }
 
