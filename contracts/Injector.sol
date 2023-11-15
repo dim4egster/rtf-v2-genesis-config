@@ -118,11 +118,6 @@ abstract contract InjectorContextHolder is Initializable, IInjector {
         _;
     }
 
-    modifier onlyFromDeployer() {
-        require(_deployerProxyContract.isDeployer(msg.sender), "InjectorContextHolder: only deployer");
-        _;
-    }
-
     modifier onlyFromRuntimeUpgrade() {
         require(IRuntimeUpgrade(msg.sender) == _runtimeUpgradeContract, "InjectorContextHolder: only runtime upgrade");
         _;
