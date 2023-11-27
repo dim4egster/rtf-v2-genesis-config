@@ -14,8 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/common/systemcontract"
-	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 
 	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
 
@@ -59,9 +58,9 @@ func createExtraData(validators []common.Address) []byte {
 	return extra
 }
 
-func readDirtyStorageFromState(f *state.StateObject) state.Storage {
+func readDirtyStorageFromState(f interface{}) state.Storage {
 	var result map[common.Hash]common.Hash
-	rs := reflect.ValueOf(*f)
+	rs := reflect.ValueOf(f).Elem()
 	rf := rs.FieldByName("dirtyStorage")
 	rs2 := reflect.New(rs.Type()).Elem()
 	rs2.Set(rs)
@@ -86,19 +85,26 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 		return err
 	}
 	statedb.SetBalance(systemContract, balance)
-	block := genesis.ToBlock(nil)
+	block := genesis.ToBlock()
 	blockContext := core.NewEVMBlockContext(block.Header(), &dummyChainContext{}, &common.Address{})
-	txContext := core.NewEVMTxContext(
-		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
-	)
-	tracer, err := tracers.New("callTracer", nil)
+
+	msg := &core.Message{
+		To:                &common.Address{},
+		From:              systemContract,
+		Value:             big.NewInt(0),
+		GasLimit:          10_000_000,
+		GasPrice:          big.NewInt(0),
+		GasFeeCap:         big.NewInt(0),
+		GasTipCap:         big.NewInt(0),
+		Data:              []byte{},
+		SkipAccountChecks: false}
+
+	txContext := core.NewEVMTxContext(msg)
+
 	if err != nil {
 		return err
 	}
-	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{
-		Debug:  true,
-		Tracer: tracer,
-	})
+	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
 	deployedBytecode, _, err := evm.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
 	if err != nil {
 		for _, c := range deployedBytecode[64:] {
@@ -192,7 +198,7 @@ type consensusParams struct {
 	MinStakingAmount         *math.HexOrDecimal256 `json:"minStakingAmount"`
 }
 
-type ChilizForks struct {
+type RTFForks struct {
 	RuntimeUpgradeBlock    *math.HexOrDecimal256 `json:"runtimeUpgradeBlock"`
 	DeployOriginBlock      *math.HexOrDecimal256 `json:"deployOriginBlock"`
 	DeploymentHookFixBlock *math.HexOrDecimal256 `json:"deploymentHookFixBlock"`
@@ -208,7 +214,7 @@ type genesisConfig struct {
 	Faucet          map[common.Address]string `json:"faucet"`
 	CommissionRate  int64                     `json:"commissionRate"`
 	InitialStakes   map[common.Address]string `json:"initialStakes"`
-	Forks           ChilizForks               `json:"forks"`
+	Forks           RTFForks                  `json:"forks"`
 }
 
 func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, silent bool, balance *big.Int) {
@@ -281,7 +287,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		big.NewInt(config.VotingPeriod),
 	}, silent, nil)
 	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{"address"}, []interface{}{
-		systemcontract.EvmHookRuntimeUpgradeAddress,
+		systemcontracts.EvmHookRuntimeUpgradeAddress,
 	}, silent, nil)
 	invokeConstructorOrPanic(genesis, deployerProxyAddress, deployerProxyRawArtifact, []string{"address[]"}, []interface{}{
 		config.Deployers,
@@ -323,6 +329,8 @@ func decimalToBigInt(value *math.HexOrDecimal256) *big.Int {
 	return (*big.Int)(value)
 }
 
+func u64(val uint64) *uint64 { return &val }
+
 func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 	chainConfig := &params.ChainConfig{
 		ChainID: big.NewInt(config.ChainId),
@@ -340,7 +348,16 @@ func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
-		// Chiliz V2 forks
+
+		NanoBlock:    big.NewInt(0),
+		MoranBlock:   big.NewInt(0),
+		GibbsBlock:   big.NewInt(0),
+		PlanckBlock:  big.NewInt(0),
+		BerlinBlock:  big.NewInt(0),
+		LondonBlock:  big.NewInt(0),
+		HertzBlock:   big.NewInt(0),
+		ShanghaiTime: u64(0),
+		// RTF V2 forks
 		RuntimeUpgradeBlock:    decimalToBigInt(config.Forks.RuntimeUpgradeBlock),
 		DeployOriginBlock:      decimalToBigInt(config.Forks.DeployOriginBlock),
 		DeploymentHookFixBlock: decimalToBigInt(config.Forks.DeploymentHookFixBlock),
@@ -445,21 +462,23 @@ var devNetConfig = genesisConfig{
 }
 
 var testNetConfig = genesisConfig{
-	ChainId: 88880,
+	ChainId: 3332199,
 	// who is able to deploy smart contract from genesis block (it won't generate event log)
 	Deployers: []common.Address{
-		common.HexToAddress("0x54E98ee51446505fcf69093E015Ee36034321104"),
+		common.HexToAddress("0xEf2AEf8927B2c2c4d9278F97b8c9dae0252dbeD6"),
+		common.HexToAddress("0x7f91AB4e20cb5da54A7965F177Dab59624668027"),
+		common.HexToAddress("0xA1765cE354E5F3515fB0BBb912ECaC3F04821f57"),
 	},
 	// list of default validators (it won't generate event log)
 	Validators: []common.Address{
-		common.HexToAddress("0x86d12897C56Fe1dB08BDfB84Bc90f458ee7dC5cE"),
-		common.HexToAddress("0xE45D81a7EF9456A254aa4db010AAF6601a15B5B7"),
-		common.HexToAddress("0x76106F0857938684D24f2CE167EE11607dFaa57d"),
-		common.HexToAddress("0x48223C151df5dc1dBc2E24f17e77728358113705"),
-		common.HexToAddress("0x49CfDafF386FD2683d28678aBd53F11Dec23c76C"),
+		common.HexToAddress("0xc2aCe5085D05732E80e41dFECF26AE0B60E60F04"),
+		common.HexToAddress("0x73E46Db39D00a37efEf86621C6a5c33591A00ef5"),
+		common.HexToAddress("0xe0579984bD4b3a1F8E1652C84411415A5887d310"),
+		common.HexToAddress("0xC72FD6515FeE82e737b34eb8BA9DB4C4A35D47Ac"),
+		common.HexToAddress("0x17EBd907EFFD60C83a3450689e1936AfeFaC38Da"),
 	},
 	SystemTreasury: map[common.Address]uint16{
-		common.HexToAddress("0xde8712be934a6A4C7dDd17DC91669F51284f4b0c"): 10000,
+		common.HexToAddress("0x9C9459Aaf90df6347D4585726F0e97802788f830"): 10000,
 	},
 	ConsensusParams: consensusParams{
 		ActiveValidatorsLength:   5,
@@ -472,23 +491,22 @@ var testNetConfig = genesisConfig{
 		MinStakingAmount:         (*math.HexOrDecimal256)(hexutil.MustDecodeBig("0xde0b6b3a7640000")),    // minimum staking amount for delegators (in ether)
 	},
 	InitialStakes: map[common.Address]string{
-		common.HexToAddress("0x86d12897C56Fe1dB08BDfB84Bc90f458ee7dC5cE"): "0x152D02C7E14AF6800000", // 100 000 eth
-		common.HexToAddress("0xE45D81a7EF9456A254aa4db010AAF6601a15B5B7"): "0x3635C9ADC5DEA00000",   // 1000 eth
-		common.HexToAddress("0x76106F0857938684D24f2CE167EE11607dFaa57d"): "0x3635C9ADC5DEA00000",   // 1000 eth
-		common.HexToAddress("0x48223C151df5dc1dBc2E24f17e77728358113705"): "0x3635C9ADC5DEA00000",   // 1000 eth
-		common.HexToAddress("0x49CfDafF386FD2683d28678aBd53F11Dec23c76C"): "0x2B5E3AF16B1880000",    // 50 eth
+		common.HexToAddress("0xc2aCe5085D05732E80e41dFECF26AE0B60E60F04"): "0x152D02C7E14AF6800000", // 100 000 eth
+		common.HexToAddress("0x73E46Db39D00a37efEf86621C6a5c33591A00ef5"): "0x3635C9ADC5DEA00000",   // 1000 eth
+		common.HexToAddress("0xe0579984bD4b3a1F8E1652C84411415A5887d310"): "0x3635C9ADC5DEA00000",   // 1000 eth
+		common.HexToAddress("0xC72FD6515FeE82e737b34eb8BA9DB4C4A35D47Ac"): "0x3635C9ADC5DEA00000",   // 1000 eth
+		common.HexToAddress("0x17EBd907EFFD60C83a3450689e1936AfeFaC38Da"): "0x2B5E3AF16B1880000",    // 50 eth
 	},
 	// owner of the governance
 	VotingPeriod: 1200, // (~1hour)
 	// faucet
 	Faucet: map[common.Address]string{
-		common.HexToAddress("0xb0c09bF51E04eDc7Bf198D61bB74CDa886878167"): "0x197D7361310E45C669F80000", // main
-		common.HexToAddress("0xc59181b702A7F3A8eCea27f30072B8dbCcC0c48a"): "0x33B2E3C9FD0803CE8000000",  // faucet
+		common.HexToAddress("0xFc26e7Fe0FeF90e6D9F096EC0847259373402671"): "0x197D7361310E45C669F80000", // faucet 1
 	},
-	Forks: ChilizForks{
+	Forks: RTFForks{
 		RuntimeUpgradeBlock:    (*math.HexOrDecimal256)(big.NewInt(0)),
-		DeployOriginBlock:      (*math.HexOrDecimal256)(big.NewInt(2849000)),
-		DeploymentHookFixBlock: nil,
+		DeployOriginBlock:      (*math.HexOrDecimal256)(big.NewInt(0)),
+		DeploymentHookFixBlock: (*math.HexOrDecimal256)(big.NewInt(0)),
 	},
 }
 
@@ -536,7 +554,7 @@ var spicyConfig = genesisConfig{
 		common.HexToAddress("0x77c6DC8fC511Bf2Fa594c47DdC336C69D745e73A"): "0x197D7361310E45C669F80000", // main
 		common.HexToAddress("0xa6779032c48127f362244AADD80E3A6E1b50BA93"): "0x33B2E3C9FD0803CE8000000",  // faucet
 	},
-	Forks: ChilizForks{
+	Forks: RTFForks{
 		RuntimeUpgradeBlock:    (*math.HexOrDecimal256)(big.NewInt(0)),
 		DeployOriginBlock:      (*math.HexOrDecimal256)(big.NewInt(0)),
 		DeploymentHookFixBlock: (*math.HexOrDecimal256)(big.NewInt(0)),
@@ -557,12 +575,21 @@ var mainNetConfig = genesisConfig{
 		common.HexToAddress("0x053b4d178AdFA5b8C06d55A7765D6d1486d5c6a0"),
 		common.HexToAddress("0xaF3aD38D80E5D4668ddF8CA170Cb941ff5f02244"),
 	},
+	/**
+	 * Here is  share distribution values. (Second parameter in SystemTreasury map)
+	 *
+	 * Here is some examples:
+	 * + 0.3% => 0.3*100=30
+	 * + 3% => 3*100=300
+	 * + 30% => 30*100=3000
+	 * + 100% => 100*100=10000
+	 */
 	SystemTreasury: map[common.Address]uint16{
 		common.HexToAddress("0xFddAc11E0072e3377775345D58de0dc88A964837"): 10000,
 	},
 	ConsensusParams: consensusParams{
 		ActiveValidatorsLength:   5,
-		EpochBlockInterval:       300,                                                                       // 1 day
+		EpochBlockInterval:       300,                                                                       // 15 minutes, if 1 day (28800)
 		MisdemeanorThreshold:     14400,                                                                     // missed blocks per epoch
 		FelonyThreshold:          21600,                                                                     // missed blocks per epoch
 		ValidatorJailEpochLength: 7,                                                                         // nb of epochs
@@ -588,7 +615,7 @@ var mainNetConfig = genesisConfig{
 		common.HexToAddress("0xaF3aD38D80E5D4668ddF8CA170Cb941ff5f02244"): "0x56BC75E2D63100000",        // Validator owner 100 CHZ
 		common.HexToAddress("0x252B5CA6c838ae47508c1eA72Dd73b58c607Af0f"): "0x3635C9ADC5DEA00000",       // Bridge relayer 1,000 CHZ
 	},
-	Forks: ChilizForks{
+	Forks: RTFForks{
 		RuntimeUpgradeBlock:    (*math.HexOrDecimal256)(big.NewInt(0)),
 		DeployOriginBlock:      (*math.HexOrDecimal256)(big.NewInt(0)),
 		DeploymentHookFixBlock: (*math.HexOrDecimal256)(big.NewInt(0)),
