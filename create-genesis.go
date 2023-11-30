@@ -349,6 +349,7 @@ func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
 
+		EulerBlock:   big.NewInt(0),
 		NanoBlock:    big.NewInt(0),
 		MoranBlock:   big.NewInt(0),
 		GibbsBlock:   big.NewInt(0),
@@ -481,7 +482,7 @@ var testNetConfig = genesisConfig{
 		common.HexToAddress("0x9C9459Aaf90df6347D4585726F0e97802788f830"): 10000,
 	},
 	ConsensusParams: consensusParams{
-		ActiveValidatorsLength:   5,
+		ActiveValidatorsLength:   13,
 		EpochBlockInterval:       1200,                                                                   // (~1hour)
 		MisdemeanorThreshold:     100,                                                                    // missed blocks per epoch
 		FelonyThreshold:          200,                                                                    // missed blocks per epoch
