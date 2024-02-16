@@ -371,7 +371,7 @@ func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 	return &core.Genesis{
 		Config:     chainConfig,
 		Nonce:      0,
-		Timestamp:  0x5e9da7ce,
+		Timestamp:  0x65CF9B5C,
 		ExtraData:  nil,
 		GasLimit:   0x2625a00,
 		Difficulty: big.NewInt(0x01),
